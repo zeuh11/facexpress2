@@ -8,6 +8,7 @@ Copyright (c) 2008-2010 by Yao Wei <njustyw@gmail.com>, all rights reserved.
 #include <vector>
 #include <string>
 #include <iostream>
+#include <conio.h>
 
 #include "asmfitting.h"
 #include "vjfacedetect.h"
@@ -20,14 +21,17 @@ using namespace std;
 #define N_SHAPES_FOR_FILTERING 3
 #define MAX_FRAMES_UNDER_THRESHOLD 15
 #define NORMALIZE_POSE_PARAMS 0
-//#define CAM_WIDTH 320
-//#define CAM_HEIGHT 240
+#define CAM_WIDTH 640
+#define CAM_HEIGHT 480
 #define FRAME_TO_START_DECISION 50
 
 #define PRINT_TIME_TICKS 0
 #define PRINT_FEATURES 0
 #define PRINT_FEATURE_SCALES 0
-
+#define UP 2490368
+#define DOWN 2621440
+#define RIGHT 2555904
+#define LEFT 2424832
 
 const char* TRACKER_WINDOW_NAME = "Facexpress";
 const char* PROCESSED_WINDOW_NAME = "Processed Results";
@@ -309,8 +313,10 @@ void track(IplImage* img){
 	}
 
 	if(showProcessedGui) {	//kaldýrýlabilir sanki
-		cvFlip(tmpGimg1, NULL, 1);
-		cvShowImage(PROCESSED_WINDOW_NAME, tmpGimg1);
+		cvFlip(sobelF1, NULL, 1);
+		cvShowImage(PROCESSED_WINDOW_NAME, sobelF1);
+		cvFlip(sobelF2, NULL, 1);
+		cvShowImage("ada", sobelF2);
 	}
 
 	if(showTrackerGui) {
@@ -389,8 +395,7 @@ int write_features(string filename, int j, int numFeats, IplImage* img){
 }
 
 
-
-bool menu(IplImage* img, char *filename){
+/*bool menu(IplImage* img, char *filename){
 	bool create;
 	CvScalar expColor = cvScalar(0,0,0);
 	while(1){
@@ -423,15 +428,87 @@ bool menu(IplImage* img, char *filename){
 		}
 	}
 	if(create == true){
-		/*img = read_from_camera();
-		cvFlip(img, NULL, 1);
-		cvShowImage(TRACKER_WINDOW_NAME, img);*/
+		//img = read_from_camera();
+		//cvFlip(img, NULL, 1);
+		//cvShowImage(TRACKER_WINDOW_NAME, img);
 	}
 	else{
 	
 	}
 	return create;
+}	*/
+
+
+
+
+
+
+
+
+int select(int selection, int range){
+	int *deneme = new int[2];
+	deneme[0] = cvWaitKey();
+	if(deneme[0] == UP){
+		selection = (selection+range-1)%range;
+	}
+	else if(deneme[0] == DOWN){
+		selection = (selection+range+1)%range;
+	}
+	else if(deneme[0] == 13){
+		selection += range;
+	}
+	return selection;
+}
+
+bool menu(IplImage* img, char *filename){
+	bool create;
+	CvScalar expColor = cvScalar(0,0,0);
+	CvScalar mark = cvScalar(255,255,0);
+	char key;
+	IplImage* print = cvCreateImage( cvSize(img->width, img->height ), img->depth, img->nChannels );
+	int selection, range, step;
+
+	selection = 0;
+	range = 2;
+	step = 15;
+	do{
+		cvCopy(img, print);
+		cvRectangle(print, cvPoint(0, 8+selection*step), cvPoint(319, 5+selection*step), mark, 12);
+		cvPutText(print, "Read Expression Class From File", cvPoint(5, 12), &font, expColor);
+		cvPutText(print, "Create New Expression Class", cvPoint(5, 27), &font, expColor);
+		cvShowImage(TRACKER_WINDOW_NAME, print);
+		selection = select(selection, range);
+		if(selection>=range){
+			selection -= range;
+			if(selection == 0) create=false;
+			else create=true;
+			break;
+		}
+	}while(1);
+
+
+	
+	cvCopy(img, print);
+	if(create){
+		cvPutText(print, "Enter filename to create a new file.", cvPoint(5, 12), &font, expColor);
+	}
+	else{
+		cvPutText(print, "Please select the file.", cvPoint(5, 12), &font, expColor);
+	}
+	cvRectangle(print, cvPoint(20, 12), cvPoint(50, 12), mark, 5);
+
+	cvShowImage(TRACKER_WINDOW_NAME, print);
+	
+	do{
+		key = cvWaitKey();
+		if(create == true){
+		}
+	}while(1);
+
+	return create;
 }	
+
+
 
 int main(int argc, char *argv[])
 {
@@ -598,11 +675,11 @@ int main(int argc, char *argv[])
 		for(int i = 0; i < nFaces; i++)
 		{
 			fit_asm.Draw(image, shapes[i]);
-			//char* shape_output_filename = filename;			//sadece 1 kiþi için kaydediyor bu þekilde, çok kiþi için istersek annotator kodunu deðiþtirmemiz de gerekir.
-			//shape_output_filename[strlen(shape_output_filename)-3]='p';
-			//shape_output_filename[strlen(shape_output_filename)-2]='t';
-			//shape_output_filename[strlen(shape_output_filename)-1]='s';
-			//save_shape(shapes[i], shape_output_filename);
+			char* shape_output_filename = filename;			//sadece 1 kiþi için kaydediyor bu þekilde, çok kiþi için istersek annotator kodunu deðiþtirmemiz de gerekir.
+			shape_output_filename[strlen(shape_output_filename)-3]='p';
+			shape_output_filename[strlen(shape_output_filename)-2]='t';
+			shape_output_filename[strlen(shape_output_filename)-1]='s';
+			save_shape(shapes[i], shape_output_filename);
 			if(shape_output_filename != NULL) {
 				save_shape(shapes[i], shape_output_filename);
 			}
@@ -777,7 +854,7 @@ show:
 		IplImage* image;  
 		int j = 0, key;
 				
-		if(open_camera(0) == false)
+		if(open_camera(0, CAM_WIDTH, CAM_HEIGHT) == false)
 			return -1;
 		
 		asm_shape shapes[N_SHAPES_FOR_FILTERING]; // Will be used for median filtering		//NERDEEEE???
@@ -786,9 +863,11 @@ show:
 		//shapeParams.create(1, nPoints*2, sampleMat.type());
 		//poseParams.create(1, maxComponents, sampleMat.type());
 
-		boolean create = false;
-		char * filenameArr = "classes\\ismail.txt";
+		bool create = false;
+		char * filenameArr = "classes\\deneme.txt";
 		int numFeats = 0;
+		if(CAM_WIDTH==640) image = cvLoadImage("images\\facexpressL.png");
+		else image = cvLoadImage("images\\facexpress.png");
 		//create = menu(image, filenameArr);
 		string filename = "classes\\ismail.txt";
 		cout << create << endl << filename << endl;
