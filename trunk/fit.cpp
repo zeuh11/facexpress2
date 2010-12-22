@@ -41,12 +41,12 @@ cv::Mat features, featureScales, expressions;
 const int N_FEATURES = 7;
 
 CvFont font;
-int showTrackerGui = 1, showProcessedGui = 0, showRegionsOnGui = 0;
+int showTrackerGui = 1, showProcessedGui = 0, showRegionsOnGui = 0, showFeatures = 0, showShape = 0;
 
-static void usage_fit()
+static void usage_fit()		//gerektiðinde deðiþtir
 {
-	printf("Usage: fit -m model_file -h cascade_file "
-		"{-i image_file | -v video_file | -c } -n n_iteration -S shape_output_file -P pose_output_file -g show_tracker_gui -e show_processed_gui -x max_components\n\n\n");
+	printf("Usage: fit -m model_file -h cascade_file "		//shape model falan eklenmesi lazým
+		"{-i image_file | -v video_file | -c } -n n_iteration -S shape_output_file -P pose_output_file -g show_tracker_gui -e show_processed_gui -r show_regions_on_gui -f show_features -t show_shape -x max_components\n\n\n");
 	exit(0);
 }
 
@@ -274,8 +274,6 @@ void extract_features_and_display(IplImage* img, asm_shape shape, int iFrame){
 	double eyeBrowDist2 = (cvSqrt((double)(eyeMiddle2.x-eyeBrowMiddle2.x)*(eyeMiddle2.x-eyeBrowMiddle2.x)+ 
 			(eyeMiddle2.y-eyeBrowMiddle2.y)*(eyeMiddle2.y-eyeBrowMiddle2.y))
 		/ shape.GetWidth());
-	//cvLine(img, eyeMiddle1, eyeBrowMiddle1, red, 2);
-	//cvLine(img, eyeMiddle2, eyeBrowMiddle2, red, 2);
 	features.at<float>(0,iFeature) = (float)((eyeBrowDist1+eyeBrowDist2)/2);
 	++iFeature;
 
@@ -467,6 +465,17 @@ void extract_features_and_display(IplImage* img, asm_shape shape, int iFrame){
 				cvLine(img, cvPoint(80, current), 
 					   cvPoint((int)(80+expressions.at<double>(0,i)*50), current), expColor, 2);
 			}
+
+			current += step + step;
+			if(showFeatures == 1){
+				for(int i=0; i<N_FEATURES; i++){
+					current += step;	//alttaki satýra string ya da char* sok bakalým
+					char buf[4];
+					//_snprintf(buf, 4, "%1.2f", features.at<float>(0,i));
+					sprintf(buf, "%.2f", features.at<float>(0,i));
+					cvPutText(img, buf, cvPoint(5, current), &font, expColor);
+				}
+			}
 		}
 		else {
 			if(iFrame%5 != 0)
@@ -480,11 +489,11 @@ void extract_features_and_display(IplImage* img, asm_shape shape, int iFrame){
 
 int main(int argc, char *argv[])
 {
-
+//	config();
 	asmfitting fit_asm;
 	char* model_name = NULL;
-	char* shape_model_name = NULL;
-	char* cascade_name = NULL;
+	//char* shape_model_name = NULL;
+	char* cascade_name= NULL;
 	char* filename = NULL;
 	char* shape_output_filename = NULL;
 	char* pose_output_filename = NULL;
@@ -506,7 +515,7 @@ int main(int argc, char *argv[])
 			model_name = argv[i];
 			break;
 		case 's':
-			shape_model_name = argv[i];
+			//shape_model_name = argv[i];
 			break;
 		case 'h':
 			cascade_name = argv[i];
@@ -536,6 +545,7 @@ int main(int argc, char *argv[])
 				usage_fit();
 			}
 			use_camera = 1;
+			i--;		//bu eklendi(bug düzelsin diye)
 			break;
 		case 'H':
 			usage_fit();
@@ -544,17 +554,26 @@ int main(int argc, char *argv[])
 			n_iteration = atoi(argv[i]);
 			break;
 		case 'S':
-			shape_output_filename = argv[i];
+			shape_output_filename = argv[i];	//break???
 		case 'P':
-			pose_output_filename = argv[i];
+			pose_output_filename = argv[i];		//break???
 		case 'F':
 			features_output_filename = argv[i];
-			break;		
+			break;
 		case 'g':
 			showTrackerGui = atoi(argv[i]);
 			break;
 		case 'e':
 			showProcessedGui = atoi(argv[i]);
+			break;
+		case 'r':
+			showRegionsOnGui = atoi(argv[i]);
+			break;
+		case 'f':
+			showFeatures = atoi(argv[i]);
+			break;
+		case 't':
+			showShape = atoi(argv[i]);
 			break;
 		case 'x':
 			maxComponents = atoi(argv[i]);
@@ -574,12 +593,12 @@ int main(int argc, char *argv[])
 	cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.4, 0.4, 0, 1, CV_AA);
 
 	asm_shape meanShape = fit_asm.GetModel()->GetMeanShape();
-	CvMat* sampleMatPtr;
-	sampleMatPtr = (CvMat*)cvLoad(shape_model_name);
-	cv::Mat sampleMat(sampleMatPtr);
+	//CvMat* sampleMatPtr;
+	//sampleMatPtr = (CvMat*)cvLoad(shape_model_name);
+	//cv::Mat sampleMat(sampleMatPtr);
 	int nPoints = meanShape.NPoints();
-	int nShapes = sampleMat.rows;
-	cv::PCA pca( sampleMat, cv::Mat(), CV_PCA_DATA_AS_ROW, maxComponents);
+	//int nShapes = sampleMat.rows;
+	//cv::PCA pca( sampleMat, cv::Mat(), CV_PCA_DATA_AS_ROW, maxComponents);
 
 
 	// case 1: process image, we can process multi-person image alignment
@@ -634,6 +653,11 @@ int main(int argc, char *argv[])
 		for(int i = 0; i < nFaces; i++)
 		{
 			fit_asm.Draw(image, shapes[i]);
+			//char* shape_output_filename = filename;			//sadece 1 kiþi için kaydediyor bu þekilde, çok kiþi için istersek annotator kodunu deðiþtirmemiz de gerekir.
+			//shape_output_filename[strlen(shape_output_filename)-3]='p';
+			//shape_output_filename[strlen(shape_output_filename)-2]='t';
+			//shape_output_filename[strlen(shape_output_filename)-1]='s';
+			//save_shape(shapes[i], shape_output_filename);
 			if(shape_output_filename != NULL) {
 				save_shape(shapes[i], shape_output_filename);
 			}
@@ -642,9 +666,9 @@ int main(int argc, char *argv[])
 		
 		if(showTrackerGui) {
 			cvNamedWindow("Fitting", 1);
-			cvShowImage("Fitting", image);	
+			cvShowImage("Fitting", image);
 			cvWaitKey(0);			
-			cvReleaseImage(&image);
+			cvReleaseImage(&image);		
 		}
 
 		// step 5: free resource
@@ -698,9 +722,9 @@ int main(int argc, char *argv[])
 
 		asm_shape shapes[N_SHAPES_FOR_FILTERING]; // Will be used for median filtering
 		asm_shape shapeCopy, shapeAligned;
-		cv::Mat shapeParams, poseParams;
-		shapeParams.create(1, nPoints*2, sampleMat.type());
-		poseParams.create(1, maxComponents, sampleMat.type());
+		//cv::Mat shapeParams, poseParams;
+		//shapeParams.create(1, nPoints*2, sampleMat.type());
+		//poseParams.create(1, maxComponents, sampleMat.type());
 
 		for(j = 0; j < frame_count; j ++)
 		{
@@ -739,6 +763,9 @@ int main(int argc, char *argv[])
 			shapeCopy = get_weighted_mean(shapes, N_SHAPES_FOR_FILTERING);
 
 			//If success, we draw and show its result
+			if(flagShape && showShape){ 
+				fit_asm.Draw(image, shapeCopy);
+			}
 			if(!flagShape) { // We let the old tracker result to be seen for a few frames
 				if(countFramesUnderThreshold == 0)
 					flagShape = false;
@@ -751,26 +778,26 @@ int main(int argc, char *argv[])
 			shapeAligned = shapeCopy;
 			shapeAligned.AlignTo(meanShape);
 			for(int k=0; k < shapeAligned.NPoints(); k++) {
-				shapeParams.at<float>(0,2*k) = shapeAligned[k].x;
-				shapeParams.at<float>(0,2*k+1) = shapeAligned[k].y;
+//				shapeParams.at<float>(0,2*k) = shapeAligned[k].x;
+//				shapeParams.at<float>(0,2*k+1) = shapeAligned[k].y;
 			}
-			pca.project(shapeParams, poseParams);
-			pca.backProject(poseParams, shapeParams);
+			//pca.project(shapeParams, poseParams);
+			//pca.backProject(poseParams, shapeParams);
 
 			for(int k=0; k < shape.NPoints(); k++) {
-				shapeAligned[k].x = shapeParams.at<float>(0,2*k);
-				shapeAligned[k].y = shapeParams.at<float>(0,2*k+1);
+//				shapeAligned[k].x = shapeParams.at<float>(0,2*k);
+//				shapeAligned[k].y = shapeParams.at<float>(0,2*k+1);
 			}
 			
 			if (NORMALIZE_POSE_PARAMS)
 				for(int k=0; k < maxComponents; k++) {
-					poseParams.at<float>(0,k) /= sqrt(pca.eigenvalues.at<float>(0,k));
+//					poseParams.at<float>(0,k) /= sqrt(pca.eigenvalues.at<float>(0,k));
 				}
 
 			extract_features_and_display(image, shapeCopy, j);
 
-			if(shape_output_filename != NULL) write_vector(shapeParams, fpShape);
-			if(pose_output_filename != NULL) write_vector(poseParams, fpPose);
+//			if(shape_output_filename != NULL) write_vector(shapeParams, fpShape);
+//			if(pose_output_filename != NULL) write_vector(poseParams, fpPose);
 			if(features_output_filename != NULL) write_vector(features, fpFeatures);
 
 
@@ -803,14 +830,14 @@ show:
 		IplImage* image;  
 		int j = 0, key;
 				
-		if(open_camera(0, CAM_WIDTH, CAM_HEIGHT) == false)
+		if(open_camera(0) == false)
 			return -1;
 		
-		asm_shape shapes[N_SHAPES_FOR_FILTERING]; // Will be used for median filtering
+		asm_shape shapes[N_SHAPES_FOR_FILTERING]; // Will be used for median filtering		//NERDEEEE???
 		asm_shape shapeCopy, shapeAligned;
-		cv::Mat shapeParams, poseParams;
-		shapeParams.create(1, nPoints*2, sampleMat.type());
-		poseParams.create(1, maxComponents, sampleMat.type());
+		//cv::Mat shapeParams, poseParams;
+		//shapeParams.create(1, nPoints*2, sampleMat.type());
+		//poseParams.create(1, maxComponents, sampleMat.type());
 
 		while(1)
 		{
@@ -846,13 +873,13 @@ show:
 					shapes[k] = shapes[k+1];
 				shapes[N_SHAPES_FOR_FILTERING-1] = shapeCopy;
 			}
-			shapeCopy = get_weighted_mean(shapes, N_SHAPES_FOR_FILTERING);
+			shapeCopy = get_weighted_mean(shapes, N_SHAPES_FOR_FILTERING);	//son frame'in etkisi fazla, ilk frame'in etkisi az
 
 			//If success, we draw and show its result
-			if(flagShape){ 
+			if(flagShape && showShape){ 
 				fit_asm.Draw(image, shapeCopy);
-			} 
-			else {
+			}
+			if(!flagShape) {		//napýyoruz anlamadým false ya da true yapmak neyi deðiþtiriyo, döngü baþýnda deðeri deðiþiyo zaten
 				if(countFramesUnderThreshold == 0)
 					flagShape = false;
 				else
@@ -861,22 +888,22 @@ show:
 			}
 			// Compute Pose Parameters
 			shapeAligned = shapeCopy;
-			shapeAligned.AlignTo(meanShape);
+			shapeAligned.AlignTo(meanShape);	//niye align ediyoruz zaten align edilmiþ deðil mi?
 			for(int k=0; k < shapeAligned.NPoints(); k++) {
-				shapeParams.at<float>(0,2*k) = shapeAligned[k].x;
-				shapeParams.at<float>(0,2*k+1) = shapeAligned[k].y;
+//				shapeParams.at<float>(0,2*k) = shapeAligned[k].x;
+//				shapeParams.at<float>(0,2*k+1) = shapeAligned[k].y;
 			}
-			pca.project(shapeParams, poseParams);
-			pca.backProject(poseParams, shapeParams);
+			//pca.project(shapeParams, poseParams);
+			//pca.backProject(poseParams, shapeParams);
 
 			for(int k=0; k < shape.NPoints(); k++) {
-				shapeAligned[k].x = shapeParams.at<float>(0,2*k);
-				shapeAligned[k].y = shapeParams.at<float>(0,2*k+1);
+//				shapeAligned[k].x = shapeParams.at<float>(0,2*k);
+//				shapeAligned[k].y = shapeParams.at<float>(0,2*k+1);
 			}
 			
 			if (NORMALIZE_POSE_PARAMS)
 				for(int k=0; k < maxComponents; k++) {
-					poseParams.at<float>(0,k) /= sqrt(pca.eigenvalues.at<float>(0,k));
+					//poseParams.at<float>(0,k) /= sqrt(pca.eigenvalues.at<float>(0,k));
 				}
 
 			// fit_asm.Draw(image, shapeCopy);
