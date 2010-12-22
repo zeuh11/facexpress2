@@ -13,14 +13,15 @@ Copyright (c) 2008-2010 by Yao Wei <njustyw@gmail.com>, all rights reserved.
 #include "vjfacedetect.h"
 #include "video_camera.h"
 #include "find_classes.h"
+#include "funcs.h"
 
 using namespace std;
 
 #define N_SHAPES_FOR_FILTERING 3
 #define MAX_FRAMES_UNDER_THRESHOLD 15
 #define NORMALIZE_POSE_PARAMS 0
-#define CAM_WIDTH 320
-#define CAM_HEIGHT 240
+//#define CAM_WIDTH 320
+//#define CAM_HEIGHT 240
 #define FRAME_TO_START_DECISION 50
 
 #define PRINT_TIME_TICKS 0
@@ -38,144 +39,11 @@ IplImage *tmpFimg1 = 0, *tmpFimg2 = 0; // Temp float images
 IplImage *sobel1=0, *sobel2=0, *sobelF1=0, *sobelF2=0;
 
 cv::Mat features, featureScales, expressions;
-const int N_FEATURES = 7;
+//const int N_FEATURES = 7;		//find_classes'ýn içinde olduðu için comment out
 
 CvFont font;
 int showTrackerGui = 1, showProcessedGui = 0, showRegionsOnGui = 0, showFeatures = 0, showShape = 0;
 
-static void usage_fit()		//gerektiðinde deðiþtir
-{
-	printf("Usage: fit -m model_file -h cascade_file "		//shape model falan eklenmesi lazým
-		"{-i image_file | -v video_file | -c } -n n_iteration -S shape_output_file -P pose_output_file -g show_tracker_gui -e show_processed_gui -r show_regions_on_gui -f show_features -t show_shape -x max_components\n\n\n");
-	exit(0);
-}
-
-/* Save shape to a pts file */
-void save_shape(asm_shape shape, char* filename) {
-
-	FILE *fp;
-	fopen_s(&fp, filename, "w");
-	
-	if (fp == NULL) {
-		fprintf(stderr, "Can't open output file %s!\n", filename);
-		exit(1);
-	}
-
-	fprintf(fp, "version: 1\nn_points: %d\n{\n", shape.NPoints());
-	for(int i=0; i<shape.NPoints(); i++)
-		fprintf(fp, "    %f %f\n", shape[i].x, shape[i].y);
-	fprintf(fp, "}");
-	fclose(fp);
-
-
-}
-
-int compare (const void * a, const void * b)
-{
-  return (int)( *(float*)a - *(float*)b );
-}
-
-float get_median(float arr[], int size)
-{
-	int middle = size/2;
-	float median;
-	if (size%2==0) median = static_cast<float>(arr[middle-1]+arr[middle])/2;
-	else median = static_cast<float>(arr[middle]);
-
-	return median;
-}
-
-asm_shape get_median(asm_shape shapes[], int nShapes) {
-	asm_shape shape = shapes[nShapes-1];
-	int i, j;
-	float *xs, *ys;
-
-	xs = new float[nShapes];
-	ys = new float[nShapes];
-
-	for(i=0; i<shape.NPoints(); i++) {
-		for(j=0; j<nShapes; j++) {
-			xs[j] = shapes[j][i].x;
-			ys[j] = shapes[j][i].y;
-		}
-		qsort(xs, nShapes, sizeof(float), compare);
-		qsort(ys, nShapes, sizeof(float), compare);
-		
-		shape[i].x = get_median(xs, nShapes);
-		shape[i].y = get_median(ys, nShapes);
-	}
-
-
-	return shape;
-}
-
-asm_shape get_mean(asm_shape shapes[], int nShapes) {
-	asm_shape shape = shapes[nShapes-1];
-	int i, j;
-
-	for(i=0; i<shape.NPoints(); i++) {
-		shape[i].x = 0;
-		shape[i].y = 0;
-		for(j=0; j<nShapes; j++) {
-			shape[i].x += shapes[j][i].x;
-			shape[i].y += shapes[j][i].y;
-		}
-		shape[i].x /= nShapes;
-		shape[i].y /= nShapes;
-	}
-
-
-	return shape;
-}
-
-asm_shape get_weighted_mean(asm_shape shapes[], int nShapes) {
-	asm_shape shape = shapes[nShapes-1];
-	int i, j;
-	double w, wSum;
-
-	for(i=0; i<shape.NPoints(); i++) {
-		wSum = 0;
-		shape[i].x = 0;
-		shape[i].y = 0;
-		for(j=0; j<nShapes; j++) {
-			w = pow(2.0,i);
-			wSum += w;
-			shape[i].x += (float)w*shapes[j][i].x;
-			shape[i].y += (float)w*shapes[j][i].y;
-		}
-		shape[i].x /= (float)wSum;
-		shape[i].y /= (float)wSum;
-	}
-
-	return shape;
-}
-
-void write_shape(asm_shape shape, FILE* fp) {
-	if (fp == NULL) {
-		fprintf(stderr, "Can't process output file %s!\n");
-		exit(1);
-	}
-	for(int i=0; i<shape.NPoints(); i++)
-		fprintf(fp, "%.2f,%.2f,", shape[i].x, shape[i].y);
-	fprintf(fp, "\n");
-
-}
-
-void write_vector(cv::Mat mat, FILE* fp) {
-	int i;
-	if (fp == NULL) {
-		fprintf(stderr, "Can't process output file %s!\n");
-		exit(1);
-	}
-	if(mat.rows != 1 || mat.type() != CV_32FC1)  {
-		fprintf(stderr, "The variable is not a row vector or the type is not float\n");
-		exit(1);
-	}
-	for(i=0; i<mat.cols-1; i++)
-		fprintf(fp, "%.3f,", mat.at<float>(0,i));
-	fprintf(fp, "%.3f\n", mat.at<float>(0,i));
-
-}
 
 void setup_tracker(IplImage* sampleCimg) {
 	if(showTrackerGui) cvNamedWindow(TRACKER_WINDOW_NAME,1);
@@ -215,8 +83,7 @@ void exit_tracker() {
 	cvDestroyAllWindows();
 }
 
-void extract_features_and_display(IplImage* img, asm_shape shape, int iFrame){
-
+void extract_features_and_display(IplImage* img, asm_shape shape){
 	int iFeature = 0;
 	CvScalar red = cvScalar(0,0,255);
 	CvScalar green = cvScalar(0,255,0);
@@ -395,101 +262,179 @@ void extract_features_and_display(IplImage* img, asm_shape shape, int iFrame){
 	++iFeature;
 
 	cvFree(faceComponent);
+	//cvShowImage(TRACKER_WINDOW_NAME, img);
+}
 
-	if(iFrame < FRAME_TO_START_DECISION && iFrame >= 5) {
-		for(iFeature = 0; iFeature < N_FEATURES; iFeature++)
+
+void initialize(IplImage* img, int iFrame){
+	if(iFrame >= 5) {
+		for(int iFeature = 0; iFeature < N_FEATURES; iFeature++){
 			featureScales.at<float>(0,iFeature) += features.at<float>(0,iFeature) / (FRAME_TO_START_DECISION-5);
-	}
-	else if(iFrame==FRAME_TO_START_DECISION) {
-		for(iFeature = 0; iFeature < N_FEATURES; iFeature++)
-			featureScales.at<float>(0,iFeature) = 1 / featureScales.at<float>(0,iFeature);
-	}
-	if(iFrame >= FRAME_TO_START_DECISION) {
-		for(iFeature = 0; iFeature < N_FEATURES; iFeature++)
-			features.at<float>(0,iFeature) = features.at<float>(0,iFeature) * featureScales.at<float>(0,iFeature);
-	}
-
-	if(iFrame >= FRAME_TO_START_DECISION) {
-		if(PRINT_FEATURES) {
-			for(int i=0; i<N_FEATURES; i++)
-				printf("%3.2f ", features.at<float>(0,i));
-			printf("\n");
-		}
-		if(PRINT_FEATURE_SCALES) {
-			for(int i=0; i<N_FEATURES; i++)
-				printf("%3.2f ", featureScales.at<float>(0,i));
-			printf("\n");
 		}
 	}
-
-
-
-
-		
-	//// Eye openness
-	///*cvCvtColor(tmpCimg1, tmpCimg1, CV_HSV2BGR);
-	//cvCvtColor(tmpCimg1, tmpGimg1, CV_RGB2GRAY);*/
-	//cvSplit(tmpCimg1, tmpGimg1, 0, 0, 0);
-	//cvSmooth(tmpGimg1, tmpGimg1, CV_GAUSSIAN, 3, 3); // comment out to make it scale independent
-	//cvSobel(tmpGimg1, tmpSimg1, 1, 0, 3);
-	//cvSobel(tmpGimg1, tmpSimg2, 0, 1, 3);
-	//cvConvertScaleAbs(tmpSimg1, sobel1); // Sobel on x direction
-	//cvConvertScaleAbs(tmpSimg2, sobel2); // Sobel on y direction
-	//cvConvertScale(sobel1, sobelF1, 1/255.);
-	//cvConvertScale(sobel2, sobelF2, 1/255.);
-
-
-	if(showProcessedGui) {
+	if(showProcessedGui) {	//kaldýrýlabilir sanki
 		cvFlip(tmpGimg1, NULL, 1);
 		cvShowImage(PROCESSED_WINDOW_NAME, tmpGimg1);
 	}
 	if(showTrackerGui) {
 		CvScalar expColor = cvScalar(0,0,0);
 		cvFlip(img, NULL, 1);
-		if(iFrame >= FRAME_TO_START_DECISION) {
 
-			int start=12, step=15, current;
-			
-			current = start; cvPutText(img, EXP_NAME_0, cvPoint(5, current), &font, expColor);
-			current += step; cvPutText(img, EXP_NAME_1, cvPoint(5, current), &font, expColor);
-			current += step; cvPutText(img, EXP_NAME_2, cvPoint(5, current), &font, expColor);
-			current += step; cvPutText(img, EXP_NAME_3, cvPoint(5, current), &font, expColor);
-			current += step; cvPutText(img, EXP_NAME_4, cvPoint(5, current), &font, expColor);
-			current += step; cvPutText(img, EXP_NAME_5, cvPoint(5, current), &font, expColor);
-			current += step; cvPutText(img, EXP_NAME_6, cvPoint(5, current), &font, expColor);
-
-			expressions = get_class_weights(features);
-			
-			current = start - 3; 
-			for(int i = 0; i < N_EXPRESSIONS; i++, current+=step) {
-				cvLine(img, cvPoint(80, current), 
-					   cvPoint((int)(80+expressions.at<double>(0,i)*50), current), expColor, 2);
-			}
-
-			current += step + step;
-			if(showFeatures == 1){
-				for(int i=0; i<N_FEATURES; i++){
-					current += step;	//alttaki satýra string ya da char* sok bakalým
-					char buf[4];
-					//_snprintf(buf, 4, "%1.2f", features.at<float>(0,i));
-					sprintf(buf, "%.2f", features.at<float>(0,i));
-					cvPutText(img, buf, cvPoint(5, current), &font, expColor);
-				}
-			}
-		}
-		else {
-			if(iFrame%5 != 0)
-				cvPutText(img, "Initializing... Do neutral expression please.", cvPoint(5, 12), &font, expColor);
-		}
+		if(iFrame%5 != 0)
+			cvPutText(img, "Initializing... Do neutral expression please.", cvPoint(5, 12), &font, expColor);		
 		
 		cvShowImage(TRACKER_WINDOW_NAME, img);
+	}
+}
+
+void normalizeFeatures(){
+	for(int iFeature = 0; iFeature < N_FEATURES; iFeature++)
+		featureScales.at<float>(0,iFeature) = 1 / featureScales.at<float>(0,iFeature);
+}
+
+void track(IplImage* img){
+	for(int iFeature = 0; iFeature < N_FEATURES; iFeature++){
+		features.at<float>(0,iFeature) = features.at<float>(0,iFeature) * featureScales.at<float>(0,iFeature);
+	}
+
+	if(PRINT_FEATURES) {		//kalýdýrýlabilir sanki
+		for(int i=0; i<N_FEATURES; i++)
+			printf("%3.2f ", features.at<float>(0,i));
+		printf("\n");
+	}
+	if(PRINT_FEATURE_SCALES) {	//kalýdýrýlabilir sanki
+		for(int i=0; i<N_FEATURES; i++)
+			printf("%3.2f ", featureScales.at<float>(0,i));
+		printf("\n");
+	}
+
+	if(showProcessedGui) {	//kaldýrýlabilir sanki
+		cvFlip(tmpGimg1, NULL, 1);
+		cvShowImage(PROCESSED_WINDOW_NAME, tmpGimg1);
+	}
+
+	if(showTrackerGui) {
+		CvScalar expColor = cvScalar(0,0,0);
+		cvFlip(img, NULL, 1);
+
+		int start=12, step=15, current;
+			
+		current = start;
+		for(int i = 0; i < N_EXPRESSIONS; i++, current+=step) {
+			cvPutText(img, EXP_NAMES[i], cvPoint(5, current), &font, expColor);
+		}
+		
+		expressions = get_class_weights(features);
+			
+		current = start - 3; 
+		for(int i = 0; i < N_EXPRESSIONS; i++, current+=step) {	//expressionlarýn yoðunluðu göstermek için
+			cvLine(img, cvPoint(80, current), cvPoint((int)(80+expressions.at<double>(0,i)*50), current), expColor, 2);
+		}
+
+		current += step + step;
+		if(showFeatures == 1){	//featurelarýn normalize deðerlerini bastýrmak için
+			for(int i=0; i<N_FEATURES; i++){
+				current += step;
+				char buf[4];
+				sprintf(buf, "%.2f", features.at<float>(0,i));
+				cvPutText(img, buf, cvPoint(5, current), &font, expColor);
+			}
+		}
+		
+		cvShowImage(TRACKER_WINDOW_NAME, img);	//videoyu(resmi) göster
 	}
 
 }
 
+int write_features(string filename, int j, int numFeats, IplImage* img){
+	
+
+	CvScalar expColor = cvScalar(0,0,0);
+	cvFlip(img, NULL, 1);
+	
+	if(j%100 == 0){
+		ofstream file(filename, ios::app);
+		if(!file.is_open()){
+			cout << "error opening file: " << filename << endl;
+			exit(1);
+		}
+		
+		cvPutText(img, "Features Taken:", cvPoint(5, 12), &font, expColor);
+		
+		for(int i=0; i<N_FEATURES; i++){
+			char buf[4];
+			sprintf(buf, "%.2f", features.at<float>(0,i) * featureScales.at<float>(0,i));
+			printf("%3.2f, ", features.at<float>(0,i) * featureScales.at<float>(0,i));
+			file << buf << " ";
+		}
+		file << endl;
+		printf("\n");
+
+		cvShowImage("taken photo", img);
+		numFeats++;
+
+		file.close();
+	}
+	if(j%100 != 0){
+		cvPutText(img, "Current Expression: ", cvPoint(5, 12), &font, expColor);
+		cvPutText(img, EXP_NAMES[numFeats/N_SAMPLES], cvPoint(5, 27), &font, expColor);
+		cvPutText(img, "Features will be taken when the counter is 0.", cvPoint(5, 42), &font, expColor);
+		char buf[12];
+		sprintf(buf, "Counter: %2d", 100-(j%100));
+		cvPutText(img, buf, cvPoint(5, 57), &font, expColor);
+	}
+	
+	cvShowImage(TRACKER_WINDOW_NAME, img);
+	return numFeats;
+}
+
+
+
+bool menu(IplImage* img, char *filename){
+	bool create;
+	CvScalar expColor = cvScalar(0,0,0);
+	while(1){
+		img = read_from_camera();
+		cvFlip(img, NULL, 1);
+		cvPutText(img, "If you would like to CREATE a new expression class press \"c\".", cvPoint(5, 12), &font, expColor);
+		cvPutText(img, "If you would like to READ expression class from file press \"r\".", cvPoint(5, 27), &font, expColor);
+		cvShowImage(TRACKER_WINDOW_NAME, img);
+
+		char key = cvWaitKey(20);
+		if(key == 99 || key == 67){ //8gerial 13enter 27esc 99c 67C 114r 82R
+			create = true;
+			break;
+		}
+		else if(key == 114 || key == 82){
+			create = false;
+			break;
+		}
+	}
+	while(1){
+		img = read_from_camera();
+		cvFlip(img, NULL, 1);
+		if(create) cvPutText(img, "Please enter the name of the file you want to create", cvPoint(5, 12), &font, expColor);
+		else cvPutText(img, "Please enter the name of the file you want to read from", cvPoint(5, 12), &font, expColor);
+		
+		cvShowImage(TRACKER_WINDOW_NAME, img);
+		char key = cvWaitKey(20);
+		if(key!=-1){
+			break;
+		}
+	}
+	if(create == true){
+		/*img = read_from_camera();
+		cvFlip(img, NULL, 1);
+		cvShowImage(TRACKER_WINDOW_NAME, img);*/
+	}
+	else{
+	
+	}
+	return create;
+}	
+
 int main(int argc, char *argv[])
 {
-//	config();
 	asmfitting fit_asm;
 	char* model_name = NULL;
 	//char* shape_model_name = NULL;
@@ -794,8 +739,10 @@ int main(int argc, char *argv[])
 //					poseParams.at<float>(0,k) /= sqrt(pca.eigenvalues.at<float>(0,k));
 				}
 
-			extract_features_and_display(image, shapeCopy, j);
-
+			extract_features_and_display(image, shapeCopy);
+			if(j < FRAME_TO_START_DECISION) initialize(image, j);
+			if(j == FRAME_TO_START_DECISION) normalizeFeatures();
+			if(j >= FRAME_TO_START_DECISION) track(image);
 //			if(shape_output_filename != NULL) write_vector(shapeParams, fpShape);
 //			if(pose_output_filename != NULL) write_vector(poseParams, fpPose);
 			if(features_output_filename != NULL) write_vector(features, fpFeatures);
@@ -839,9 +786,15 @@ show:
 		//shapeParams.create(1, nPoints*2, sampleMat.type());
 		//poseParams.create(1, maxComponents, sampleMat.type());
 
+		boolean create = false;
+		char * filenameArr = "classes\\ismail.txt";
+		int numFeats = 0;
+		//create = menu(image, filenameArr);
+		string filename = "classes\\ismail.txt";
+		cout << create << endl << filename << endl;
 		while(1)
 		{
-			double t = (double)cvGetTickCount();
+			double t = (double)cvGetTickCount();	//DURSUN MU???
 			if(PRINT_TIME_TICKS)
 				printf("Tracking frame %04i: ", j);
 
@@ -905,16 +858,22 @@ show:
 				for(int k=0; k < maxComponents; k++) {
 					//poseParams.at<float>(0,k) /= sqrt(pca.eigenvalues.at<float>(0,k));
 				}
-
+				
 			// fit_asm.Draw(image, shapeCopy);
-			extract_features_and_display(image, shapeCopy, j);
+			extract_features_and_display(image, shapeCopy);
+			if(j < FRAME_TO_START_DECISION)			{	initialize(image, j);																	}
+			else if(j == FRAME_TO_START_DECISION)	{	normalizeFeatures(); if(create) config(filename); else read_config_from_file(filename); } 
+			else if(numFeats < N_POINTS && create)	{	numFeats = write_features(filename, j, numFeats, image);								}
+			else if(numFeats == N_POINTS && create) {	read_config_from_file(filename); numFeats++;											}
+			else									{	track(image);																			}
+
 show2:
 			// fit_asm.Draw(edges, shape);
 
 			key = cvWaitKey(20);           // wait 20 ms
 			if(key == 27)
 				break;
-			if(key == 's') {
+			if(key == 's') {			//KALDIRALIM MI?
 				for(int i=0; i<N_FEATURES; i++)
 					printf("%3.2f, ", features.at<float>(0,i));
 				printf("\n");
